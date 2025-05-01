@@ -570,6 +570,7 @@ name = "gps_tracker"
 version = "0.1.0"
 dependencies = [
  "embassy-executor",
+ "embassy-sync",
  "embassy-time",
  "embedded-io",
  "esp-alloc",
