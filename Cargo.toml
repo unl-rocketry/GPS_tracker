@@ -1,18 +1,22 @@
 [package]
 edition = "2021"
-name    = "GPS_tracker"
+name    = "gps_tracker"
 version = "0.1.0"
 
 [[bin]]
-name = "GPS_tracker"
+name = "gps_tracker"
+test = false
+bench = false
 
+[lib]
+name = "gps_tracker"
 test = false
 bench = false
 
 [dependencies]
-critical-section = "1.2.0"
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-20480"] }
 embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
+embedded-io = { version = "0.6.1", features = ["alloc"] }
 esp-alloc = "0.7.0"
 esp-backtrace = { version = "0.15.1", features = [
   "esp32",
@@ -24,7 +28,10 @@ esp-hal = { version = "1.0.0-beta.0", features = ["esp32", "unstable"] }
 esp-hal-embassy = { version = "0.7.0", features = ["esp32"] }
 esp-println = { version = "0.13.0", features = ["esp32", "log"] }
 log = { version = "0.4.21" }
-static_cell = { version = "2.1.0", features = ["nightly"] }
+nmea = { version = "0.7", default-features = false, features = ["all-sentences"]}
+serde = { version = "1.0.219", default-features = false, features = ["derive"]}
+serde_json = {  version = "1.0.140", default-features = false, features = ["alloc"]}
+
 
 [profile.dev]
 # Rust debug is too slow.

@@ -1,17 +1,21 @@
 #![no_std]
 #![no_main]
 
+use embedded_io::Write;
+use alloc::string::{String, ToString};
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
-use log::info;
+use esp_hal::uart::{Config, Uart};
+use log::{debug, info};
+use nmea::{Nmea, SentenceType};
+use gps_tracker::{GpsInfo, TelemetryPacket};
 
 extern crate alloc;
 
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     // generator version: 0.3.1
 
     esp_println::logger::init_logger_from_env();
@@ -26,13 +30,78 @@ async fn main(spawner: Spawner) {
 
     info!("Embassy initialized!");
 
-    // TODO: Spawn some tasks
-    let _ = spawner;
+    // Set up the GPS serial port. This must utilize the proper port on the esp
+    let mut gps_port = Uart::new(
+        peripherals.UART1,
+        Config::default().with_baudrate(9600))
+        .unwrap()
+        .with_rx(peripherals.GPIO1);
+
+    // Set up the RFD serial port. This must utilize the proper port on the esp
+    let mut rfd_send = Uart::new(
+        peripherals.UART2,
+        Config::default().with_baudrate(57600))
+        .unwrap()
+        .with_tx(peripherals.GPIO2);
+
+    // Set up and configure the NMEA parser.
+    let mut nmea_parser = Nmea::create_for_navigation(&[SentenceType::GGA]).unwrap();
+
+    let mut buffer = [0u8; 4096];
 
     loop {
-        info!("Hello world!");
-        Timer::after(Duration::from_secs(1)).await;
-    }
+        let byte_count = gps_port.read(&mut buffer).unwrap();
 
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
+        if byte_count == 0 {
+            continue;
+        }
+
+        let new_string = String::from_utf8_lossy(&buffer[..byte_count]);
+
+        for line in new_string
+            .lines()
+            .filter(|l| !l.is_empty())
+            .filter(|l| l.starts_with("$"))
+        {
+            let _ = nmea_parser.parse_for_fix(line);
+        }
+
+        if nmea_parser.latitude.is_none()
+            || nmea_parser.longitude.is_none()
+            || nmea_parser.altitude.is_none()
+        {
+            continue;
+        }
+
+        let gps_data = Some(GpsInfo {
+            latitude: nmea_parser.latitude.unwrap(),
+            longitude: nmea_parser.longitude.unwrap(),
+            altitude: nmea_parser.altitude.unwrap(),
+        });
+
+        //PACKET!!!
+
+        // Construct a packet from the data
+        let packet = TelemetryPacket {
+            gps: gps_data,
+            power_info: None,
+            environmental_info: None,
+        };
+
+        // Calculate the CRC of the packet based on its data.
+        let packet_crc = packet.crc();
+
+        // Write the data out
+        rfd_send
+            .write_all(packet_crc.to_string().as_bytes())
+            .unwrap();
+        rfd_send.write_all(b" ").unwrap();
+        let json_vec = serde_json::to_vec(&packet).unwrap();
+        rfd_send.write_all(&json_vec).unwrap();
+        rfd_send.write_all(b"\n").unwrap();
+
+        debug!("Sent {} bytes, checksum 0x{:0X}", json_vec.len(), packet_crc);
+
+        rfd_send.flush().unwrap();
+    }
 }
