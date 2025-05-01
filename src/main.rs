@@ -1,16 +1,16 @@
 #![no_std]
 #![no_main]
 
-use embedded_io::Write;
 use alloc::string::{String, ToString};
 use embassy_executor::Spawner;
+use embedded_io::Write;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::{Config, Uart};
+use gps_tracker::{GpsInfo, TelemetryPacket};
 use log::{debug, info};
 use nmea::{Nmea, SentenceType};
-use gps_tracker::{GpsInfo, TelemetryPacket};
 
 extern crate alloc;
 
@@ -31,16 +31,12 @@ async fn main(_spawner: Spawner) {
     info!("Embassy initialized!");
 
     // Set up the GPS serial port. This must utilize the proper port on the esp
-    let mut gps_port = Uart::new(
-        peripherals.UART1,
-        Config::default().with_baudrate(9600))
+    let mut gps_port = Uart::new(peripherals.UART1, Config::default().with_baudrate(9600))
         .unwrap()
         .with_rx(peripherals.GPIO1);
 
     // Set up the RFD serial port. This must utilize the proper port on the esp
-    let mut rfd_send = Uart::new(
-        peripherals.UART2,
-        Config::default().with_baudrate(57600))
+    let mut rfd_send = Uart::new(peripherals.UART2, Config::default().with_baudrate(57600))
         .unwrap()
         .with_tx(peripherals.GPIO2);
 
@@ -100,7 +96,11 @@ async fn main(_spawner: Spawner) {
         rfd_send.write_all(&json_vec).unwrap();
         rfd_send.write_all(b"\n").unwrap();
 
-        debug!("Sent {} bytes, checksum 0x{:0X}", json_vec.len(), packet_crc);
+        debug!(
+            "Sent {} bytes, checksum 0x{:0X}",
+            json_vec.len(),
+            packet_crc
+        );
 
         rfd_send.flush().unwrap();
     }
