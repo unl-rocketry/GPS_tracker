@@ -5,7 +5,9 @@ version = "0.1.0"
 
 [[bin]]
 name = "GPS_tracker"
-path = "./src/bin/main.rs"
+
+test = false
+bench = false
 
 [dependencies]
 critical-section = "1.2.0"
