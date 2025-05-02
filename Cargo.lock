@@ -30,6 +30,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit_field"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
+
+[[package]]
 name = "bitfield"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -66,6 +72,12 @@ name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
+name = "cast"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cfg-if"
@@ -579,6 +591,7 @@ dependencies = [
  "esp-hal-embassy",
  "esp-println",
  "log",
+ "mcp9808",
  "nmea",
  "serde",
  "serde_json",
@@ -683,6 +696,17 @@ name = "log"
 version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
+
+[[package]]
+name = "mcp9808"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8905b2da1505447b1630f0708cf6b7d5730160b06d74d3f40a49ab2d2f41068f"
+dependencies = [
+ "bit_field",
+ "cast",
+ "embedded-hal 1.0.0",
+]
 
 [[package]]
 name = "memchr"

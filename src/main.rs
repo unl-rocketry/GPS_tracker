@@ -2,6 +2,7 @@
 #![no_std]
 #![no_main]
 
+use mcp9808::reg_conf::{Configuration, CriticalLock};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::ptr::addr_of_mut;
@@ -15,12 +16,19 @@ use embedded_io::Write;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{AnyPin, Pin};
+use esp_hal::i2c;
+use esp_hal::i2c::master::{AnyI2c, I2c};
 use esp_hal::system::{CpuControl, Stack};
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::{AnyUart, Config, DataBits, Parity, StopBits, Uart};
 use esp_hal_embassy::Executor;
-use gps_tracker::{GpsInfo, TelemetryPacket};
+use gps_tracker::{EnvironmentalInfo, GpsInfo, TelemetryPacket};
 use log::info;
+use mcp9808::address::SlaveAddress;
+use mcp9808::MCP9808;
+use mcp9808::reg_conf::{ShutdownMode, WindowLock};
+use mcp9808::reg_res::ResolutionVal;
+use mcp9808::reg_temp_generic::ReadableTempRegister;
 use nmea::{Nmea, SentenceType};
 use static_cell::StaticCell;
 
@@ -28,6 +36,7 @@ extern crate alloc;
 
 static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 static GPS_CHANNEL: Channel<CriticalSectionRawMutex, GpsInfo, 1> = Channel::new();
+static TEMP_CHANNEL: Channel<CriticalSectionRawMutex, EnvironmentalInfo, 1, > = Channel::new();
 
 #[esp_hal_embassy::main]
 async fn main(_spawner: Spawner) {
@@ -48,7 +57,10 @@ async fn main(_spawner: Spawner) {
     let mut cpu_control = CpuControl::new(peripherals.CPU_CTRL);
 
     let gps_receiver = GPS_CHANNEL.receiver();
+    let temp_reciever = TEMP_CHANNEL.receiver();
 
+    let sda = peripherals.GPIO15.degrade();
+    let scl = peripherals.GPIO13.degrade();
 
     let _guard = cpu_control
         .start_app_core(unsafe { &mut *addr_of_mut!(APP_CORE_STACK) }, move || {
@@ -56,6 +68,7 @@ async fn main(_spawner: Spawner) {
             let executor = EXECUTOR.init(Executor::new());
             executor.run(|spawner| {
                 spawner.spawn(gps_reader(peripherals.GPIO14.degrade(), AnyUart::from(peripherals.UART1), GPS_CHANNEL.sender())).ok();
+                spawner.spawn(temp_reader(sda, scl, AnyI2c::from(peripherals.I2C0), TEMP_CHANNEL.sender())).ok();
             });
         })
         .unwrap();
@@ -68,15 +81,17 @@ async fn main(_spawner: Spawner) {
         .with_tx(peripherals.GPIO26);
 
     let mut gps_data = None;
+    let mut env_data = None;
 
     loop {
         if let Ok(g) = gps_receiver.try_receive() { gps_data = Some(g) }
+        if let Ok(g) = temp_reciever.try_receive() { env_data = Some(g) }
 
         // Construct a packet from the data
         let packet = TelemetryPacket {
             gps: gps_data,
             power_info: None,
-            environmental_info: None,
+            environmental_info: env_data,
         };
 
         // Calculate the CRC of the packet based on its data.
@@ -153,5 +168,39 @@ async fn gps_reader(pin: AnyPin, uart: AnyUart, channel_sender: Sender<'static, 
         };
 
         let _ = channel_sender.try_send(gps_data);
+    }
+}
+
+#[embassy_executor::task]
+async fn temp_reader(sda: AnyPin, scl: AnyPin, i2c: AnyI2c, channel_sender: Sender<'static, CriticalSectionRawMutex, EnvironmentalInfo, 1>) {
+
+    let i2c_bus = I2c::new(
+        i2c,
+        i2c::master::Config::default().with_timeout(i2c::master::BusTimeout::Maximum),
+    )
+        .unwrap()
+        .with_sda(sda)
+        .with_scl(scl)
+        .into_async();
+    // let i2c_bus = RefCell::new(i2c_bus);
+
+    let mut mcp = MCP9808::new(i2c_bus);
+    mcp.set_address(SlaveAddress::Default);
+    let mut conf =mcp.read_configuration().unwrap();
+    conf.set_shutdown_mode(ShutdownMode::Continuous);
+    conf.set_window_lock(WindowLock::Unlocked);
+    conf.set_critical_lock(CriticalLock::Unlocked);
+    mcp.write_register(conf).unwrap();
+
+    loop {
+        let temp_reg= mcp.read_temperature().unwrap();
+        let temp: f64 = temp_reg.get_celsius(ResolutionVal::Deg_0_0625C) as f64;
+
+        let env_info = EnvironmentalInfo {
+            pressure: 0.0,
+            temperature: temp,
+        };
+
+        let _ = channel_sender.try_send(env_info);
     }
 }
