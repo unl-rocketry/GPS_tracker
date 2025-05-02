@@ -1,24 +1,26 @@
+#![feature(string_from_utf8_lossy_owned)]
 #![no_std]
 #![no_main]
 
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use core::ptr::addr_of_mut;
 use embassy_executor::Spawner;
 use embassy_sync::{
     channel::{Channel, Sender},
     blocking_mutex::raw::CriticalSectionRawMutex,
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 use embedded_io::Write;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{AnyPin, Pin};
 use esp_hal::system::{CpuControl, Stack};
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::uart::{AnyUart, Config, Uart};
+use esp_hal::uart::{AnyUart, Config, DataBits, Parity, StopBits, Uart};
 use esp_hal_embassy::Executor;
 use gps_tracker::{GpsInfo, TelemetryPacket};
-use log::{debug, info};
+use log::info;
 use nmea::{Nmea, SentenceType};
 use static_cell::StaticCell;
 
@@ -59,7 +61,9 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     // Set up the RFD serial port. This must utilize the proper port on the esp
-    let mut rfd_send = Uart::new(peripherals.UART2, Config::default().with_baudrate(57600))
+    let mut rfd_send = Uart::new(
+        peripherals.UART2, 
+        Config::default().with_baudrate(57600).with_stop_bits(StopBits::_1).with_data_bits(DataBits::_8).with_parity(Parity::None))
         .unwrap()
         .with_tx(peripherals.GPIO26);
 
@@ -107,21 +111,28 @@ async fn gps_reader(pin: AnyPin, uart: AnyUart, channel_sender: Sender<'static, 
     // Set up the GPS serial port. This must utilize the proper port on the esp
     let mut gps_port = Uart::new(uart, Config::default().with_baudrate(9600))
         .unwrap()
-        .with_rx(pin).into_async();
+        .with_rx(pin);
 
     // Set up and configure the NMEA parser.
     let mut nmea_parser = Nmea::create_for_navigation(&[SentenceType::GGA]).unwrap();
 
-    let mut buffer = [0u8; 4096];
+    let mut buffer = Vec::new();
+    let mut anotherbuffer = [0u8; 1];
 
     loop {
-        let byte_count = gps_port.read(&mut buffer).unwrap_or_default();
+        let byte_count = gps_port.read(&mut anotherbuffer).unwrap_or_default();
 
         if byte_count == 0 {
             continue;
         }
+        
+        if anotherbuffer[0] != b'\n' {
+            buffer.push(anotherbuffer[0]);
+            continue
+        }
 
-        let new_string = String::from_utf8_lossy(&buffer[..byte_count]);
+        let new_string = String::from_utf8_lossy_owned(buffer.clone());
+        buffer.clear();
 
         for line in new_string
             .lines()
