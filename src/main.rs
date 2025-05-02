@@ -30,7 +30,7 @@ static mut APP_CORE_STACK: Stack<8192> = Stack::new();
 static GPS_CHANNEL: Channel<CriticalSectionRawMutex, GpsInfo, 1> = Channel::new();
 
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     // generator version: 0.3.1
 
     esp_println::logger::init_logger_from_env();
@@ -70,10 +70,7 @@ async fn main(spawner: Spawner) {
     let mut gps_data = None;
 
     loop {
-        match gps_receiver.try_receive() {
-            Ok(g) => gps_data = Some(g),
-            Err(_) => {}
-        };
+        if let Ok(g) = gps_receiver.try_receive() { gps_data = Some(g) }
 
         // Construct a packet from the data
         let packet = TelemetryPacket {
