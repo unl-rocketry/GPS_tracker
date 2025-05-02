@@ -11,7 +11,7 @@ use embassy_sync::{
     channel::{Channel, Sender},
     blocking_mutex::raw::CriticalSectionRawMutex,
 };
-use embassy_time::Timer;
+use embassy_time::{block_for, Duration, Timer};
 use embedded_io::Write;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
@@ -39,7 +39,7 @@ static GPS_CHANNEL: Channel<CriticalSectionRawMutex, GpsInfo, 1> = Channel::new(
 static TEMP_CHANNEL: Channel<CriticalSectionRawMutex, EnvironmentalInfo, 1, > = Channel::new();
 
 #[esp_hal_embassy::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     // generator version: 0.3.1
 
     esp_println::logger::init_logger_from_env();
@@ -62,13 +62,14 @@ async fn main(_spawner: Spawner) {
     let sda = peripherals.GPIO15.degrade();
     let scl = peripherals.GPIO13.degrade();
 
+    spawner.spawn(temp_reader(sda, scl, AnyI2c::from(peripherals.I2C0), TEMP_CHANNEL.sender())).ok();
+
     let _guard = cpu_control
         .start_app_core(unsafe { &mut *addr_of_mut!(APP_CORE_STACK) }, move || {
             static EXECUTOR: StaticCell<Executor> = StaticCell::new();
             let executor = EXECUTOR.init(Executor::new());
             executor.run(|spawner| {
                 spawner.spawn(gps_reader(peripherals.GPIO14.degrade(), AnyUart::from(peripherals.UART1), GPS_CHANNEL.sender())).ok();
-                spawner.spawn(temp_reader(sda, scl, AnyI2c::from(peripherals.I2C0), TEMP_CHANNEL.sender())).ok();
             });
         })
         .unwrap();
@@ -202,5 +203,7 @@ async fn temp_reader(sda: AnyPin, scl: AnyPin, i2c: AnyI2c, channel_sender: Send
         };
 
         let _ = channel_sender.try_send(env_info);
+
+        Timer::after_millis(100).await;
     }
 }
