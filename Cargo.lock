@@ -582,6 +582,7 @@ dependencies = [
  "nmea",
  "serde",
  "serde_json",
+ "static_cell",
 ]
 
 [[package]]

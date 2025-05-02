@@ -32,6 +32,7 @@ log = { version = "0.4.21" }
 nmea = { version = "0.7", default-features = false, features = ["all-sentences"]}
 serde = { version = "1.0.219", default-features = false, features = ["derive"]}
 serde_json = {  version = "1.0.140", default-features = false, features = ["alloc"]}
+static_cell = "2.1.0"
 
 
 [profile.dev]
