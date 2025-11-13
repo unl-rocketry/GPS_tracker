@@ -2,6 +2,8 @@
 #![no_std]
 #![no_main]
 
+mod fileio;
+
 use mcp9808::reg_conf::{Configuration, CriticalLock};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
